@@ -1,28 +1,110 @@
-from flask import Flask, request, url_for, redirect, render_template, jsonify
+from flask import Flask, request, url_for, redirect, render_template, jsonify, Response
 import os
 from script import read_pdf_cv, extract_information, prediction
 from flask_cors import CORS
-from google.cloud import aiplatform
-import vertexai
-from vertexai.generative_models import GenerativeModel
+from transformers import pipeline
+from huggingface_hub import InferenceClient
+import zipfile
+
+repo_id = "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF"
 
 app = Flask(__name__)
 CORS(app)
 app.config['UPLOAD_FOLDER'] = '/Users/yosolukito/Documents/web_aic_lomba_compfest_2024/upload'
 
-# config for google cloud platform 
-project_id = "850946675474"
-endpoint_id = "4656582376724365312"
-region = "us-central1"
 
-# define ai platform for google cloud
-aiplatform.init(project=project_id, location=region)
 
-# connect vertex ai 
-vertexai.init(project="850946675474", location="us-central1")
 
-# melakukan config project dengan LLAama
-endpoint = aiplatform.Endpoint(endpoint_id)
+client = InferenceClient(api_key="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")
+
+@app.route('/analyze-zip', methods=['POST', 'GET'])
+def analyze_zip():
+    uploaded_file_user = request.files.get("file")
+    project_desc = request.form.get("description")
+
+    # validasi user data 
+    if not uploaded_file_user or not project_desc: 
+        return jsonify({"error": "missing project file or project question"}), 400 
+    
+    # validasi file ended .zip
+    if not uploaded_file_user.filename.endswith(".zip"):
+        return jsonify({"error": "only zip files that supported"}), 400
+    
+    # Save the uploaded ZIP file
+    zip_path = os.path.join(app.config["UPLOAD_FOLDER"], uploaded_file_user.filename)
+    uploaded_file_user.save(zip_path)
+
+    # Extract ZIP file contents
+    extracted_contents = []
+    extracted_path = os.path.join(app.config["UPLOAD_FOLDER"], 'extracted')
+    os.makedirs(extracted_path, exist_ok=True)
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extracted_path)
+
+    # Read files in the extracted folder
+    for root, _, files in os.walk(extracted_path):
+        for file in files:
+            file_path = os.path.join(root, file)
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+                extracted_contents.append(content)
+
+    # Combine extracted file contents for analysis
+    combined_content = " ".join(extracted_contents)
+
+    question = f"""
+        Question: {project_desc}
+        Answer: {combined_content}
+        Please evaluate the answer what is must be fixed from this answer for get best result based on Question?
+    """
+
+    messages = [{"role": "user", "content": question}]
+
+    def generate():
+        try: 
+            stream = client.chat.completions.create(
+                model="microsoft/Phi-3.5-mini-instruct",
+                messages=messages,
+                max_tokens=800,
+                stream=True
+            )
+
+            for chunk in stream: 
+                content = chunk.choices[0].delta.get("content", "")
+                yield content
+        except Exception as e:
+            yield f'Error: {str(e)}'
+    
+    return Response(generate(), content_type='text/plain')
+
+# chat api 
+@app.route('/chat-completion', methods=['POST', 'GET'])
+def chat_completion():
+    data = request.json
+    messages = data.get("messages", [])
+
+    if not messages:
+        return jsonify({"error": "No messages provided"}), 400
+
+    def generate():
+        try:
+            stream = client.chat.completions.create(
+                model="microsoft/Phi-3.5-mini-instruct",
+                messages=messages,
+                max_tokens=800,
+                stream=True
+            )
+         
+            for chunk in stream:
+                
+                content = chunk.choices[0].delta.get("content", "")
+                yield content
+        except Exception as e:
+            yield f"Error: {str(e)}"
+
+    # Return a streamed response
+    return Response(generate(), content_type="text/plain")
+
 
 @app.route("/")
 def index():
@@ -48,18 +130,7 @@ def upload_file():
         data_input_prediction = str(len(projects))+' '+str(programming_language_skills)+' '+str(framework_skills)+' '+str(database_management_skills)+' '+str(tools_skills)
 
         predicted_job, top_5_courses = prediction(data_input=data_input_prediction)
-        print(type(predicted_job.tolist()))
-
-    #    ai that description the project 
-        model = GenerativeModel("gemini-1.5-flash-001")
-        responses = model.generate_content(
-            f"summarize the job of {predicted_job}", stream=True
-        )
-
-        # loop the response
-        rlist = [] 
-        for r in responses:
-            rlist.append(r.text.replace("*",''))
+        print(type(predicted_job))
 
         return jsonify({  
             "current_work": data_real_currwork, 
@@ -69,59 +140,13 @@ def upload_file():
             "tools_skills": tools_skills, 
             "achievements": achievement_real, 
             "number_of_projects": projects, 
-            "predicted_job": predicted_job.tolist(), 
+            "predicted_job": predicted_job, 
             "top_5_courses": top_5_courses, 
-            "explanation_backend": "".join(rlist)
             }), 200
     
-@app.route('/task/<courseid>', methods=['GET'])
-def give_course(courseid):
 
-# TODO(developer): Set the following variables and un-comment the lines below
-# PROJECT_ID = "your-project-id"
-# MODEL_ID = "gemini-1.5-flash-001"
-    if courseid:
-        model = GenerativeModel("gemini-1.5-flash-001")
-        responses = model.generate_content(
-            f"give me simple learning path about {courseid}", stream=True
-        )
 
-    rlist = []
-    for response in responses:
-        print(response.text)
-        rlist.append(response.text.replace('*',''))
-    
-    return jsonify({
-        "status": 400, 
-        "learning_path": "".join(rlist)
-    })
 
-# function for getting question about that send 
-@app.route("/question/<courseid>", methods=['GET'])
-def get_question(courseid):
-    if courseid: 
-        total = []
-        model = GenerativeModel('gemini-1.5-flash-001')
-
-        # make three question 
-        for i in range(3):
-            rlist = []
-            responses = model.generate_content(
-                f"give me one multiple choice question and answer about {courseid}", stream=True
-            )
-
-            # question obj
-            qst = {}
-
-            for r in responses:
-                print(r.text)
-                rlist.append(r.text)
-            
-
-    return jsonify({
-        "status": "success", 
-        "data": "".join(rlist)
-    }), 200
     
 if __name__ == '__main__':
     app.run(debug=True)

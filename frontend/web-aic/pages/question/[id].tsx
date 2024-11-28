@@ -2,62 +2,87 @@ import BoldTextParser from "@/component/BoldParser";
 import axios from "axios";
 import { useParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
+import { InboxOutlined } from '@ant-design/icons';
+import { UploadProps, Button, message } from 'antd';
+import {Upload} from 'antd'
+import { Session } from "inspector/promises";
+
+const { Dragger } = Upload;
 
 function DetailQuestion() {
   const params = useParams();
+  const [task, setTask] = useState('')
+  const [fileList, setFileList] = useState<any[]>([]);
+
   console.log(params);
-  let savedAns = []
 
-  // make api for generate learning path based on course
-  const generateLearningPath = () => {
-    axios.get(`http://127.0.0.1:5000/task/${params.id}`).then((res) => {
-      console.log(res);
-      const lines = res.data.learning_path.split("\n");
-      const formattedText = lines.join("<br>");
-      let lp = document.getElementById("learn-path");
+  // make function to connect with api model 
+  const ModelApi = () => {
 
-      if (lp) {
-        lp.innerHTML = formattedText;
+    const id = Array.isArray(params.id) ? params.id.join('') : params.id
+
+    const stored = sessionStorage.getItem(id) || null 
+    // check session storage 
+    if(stored){
+      setTask(stored as string)
+    }
+    else{
+        axios.post("http://127.0.0.1:5000/chat-completion", {
+          messages: [
+            {"role": "user", "content": `give me simple project question that can I develop about ${params.id} !`}
+          ]
+        })
+        .then((res)=>{
+          console.log(res.data)
+          sessionStorage.setItem(id, res.data)
+          setTask(res.data as string)
+        })
       }
-    });
-  };
+    }
 
-  // Approach 2: Using String Methods
-function extractAnswerString(text) {
-  const start = text.indexOf("## Answer:") + "## Answer:".length;
-  const end = text.indexOf("**Explanation:**");
-  if (start !== -1 && end !== -1 && start < end) {
-    return text.substring(start, end).trim();
-  }
-  return null;
-}
+    // submit data and analyze the data based on question that given 
+    const handleUploadAnswer = async () => {
 
-  // generate question about the course 
-  const generateQuestion = () => {
-    axios.get(`http://127.0.0.1:5000/question/${params.id}`)
-    .then((resp)=>{
-      console.log(resp.data.data) 
+      // set obj to form data 
+      const formData = new FormData()
+      formData.append("description", sessionStorage.getItem(Array.isArray(params.id) ? params.id.join('') : params.id) || '')
+      formData.append("file", fileList[0].originFileObj)
 
-      const qs_from_cloud = resp.data.data.split("\n")
+      
 
-      // save the answer 
-      savedAns = extractAnswerString(resp.data.data)
-      console.log(savedAns)
+      try {
+        const response = await axios.post(`http://127.0.0.1:5000/analyze-zip`,formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        })
 
-      let txtFormatted = qs_from_cloud.join("<br>")
-      // insert the text to inner html 
-      let qs = document.getElementById("questions")
-      if(qs){
-        qs.innerHTML = txtFormatted
+        console.log(response.data)
+
+      } catch (error) {
+        console.log(error)
       }
-    })
-  }
 
-  useEffect(() => {
-    generateLearningPath();
-    generateQuestion()
+    }
 
-  }, []);
+    // props data 
+    const uploadProps: UploadProps = {
+      onRemove: (file: any) => {
+        setFileList([]);
+      },
+      beforeUpload: (file: any) => {
+        if (!file.name.endsWith(".zip")) {
+          message.error("Only .zip files are supported.");
+          return Upload.LIST_IGNORE;
+        }
+        setFileList([file]);
+        return false; // Prevent automatic upload
+      },
+      fileList,
+      accept: ".zip",
+    }
+
+  useEffect(()=>{
+    ModelApi()
+  }, [])
 
   return (
     <div className="bg-indigo-700 min-h-screen p-4">
@@ -72,8 +97,24 @@ function extractAnswerString(text) {
           <p>{`Example test about ${params.id}`}</p>
         </div>
         <div className="mx-[20px] p-4" id="questions">
-          
+          <div className="flex flex-wrap">
+              <pre className="whitespace-pre-wrap break-words">{task || "Loading..."}</pre>
+          </div>
         </div>
+      </div>
+      <div className="mx-[20px] mt-5 rounded bg-white">
+        <Dragger {...uploadProps}>
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">Click or drag file to this area to upload</p>
+          <p className="ant-upload-hint">
+            Only zip files allowed 
+          </p>
+        </Dragger>
+        <Button type="primary" onClick={handleUploadAnswer}>
+          Submit
+        </Button>
       </div>
     </div>
   );

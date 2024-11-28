@@ -7,6 +7,10 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import cross_val_score, StratifiedKFold
+from verify_data import ground_truth
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from sklearn.model_selection import GridSearchCV
+from sklearn.preprocessing import LabelEncoder
 
 file_path = '/Users/yosolukito/Documents/web_aic_lomba_compfest_2024/CV_Zaky_Yusuf_Pahlevi.pdf'
 nlp = spacy.load('en_core_web_sm')
@@ -194,17 +198,6 @@ def extract_information(text):
         # change programming skills string to array with split ','
         programming_language_skills = programming_language_skills[0].split(', ')
 
-        # implementasi spacy 
-        # join_pg_skill = " ".join(programming_language_skills)
-        
-        # for pg in programming_language_skills:
-        #     pg_doc = nlp(pg)
-        #     pg_data = [token.text for token in pg_doc if token.text in list_prog_skill]
-        #     print(pg_data)
-        #     programming_language_skills.extend(pg_data)
-        # print(programming_language_skills)
-
-
         # for framework and libraries 
         framework_skills = [item.split(": ")[1] for item in skills if "Frameworks/Libraries:" in item]
         framework_skills = framework_skills[0].split(', ')
@@ -267,42 +260,84 @@ def extract_information(text):
             if ent.label_ == 'WORK_OF_ART' or ent.label_ == "EVENT":
                 achievement_real.append(ent.text)
 
-        # for text in text_achievement: 
-        #     if text.strip() and text.startswith("Best") or text.startswith("Finalist"):
-        #         achievements.append(text.strip())
     return data_real_currwork, programming_language_skills, framework_skills, database_management_skills, tools_skills, achievement_real, projects
 
 
 # menampilkan hasil data result dari proses ekstrak cv 
 data_real_currwork, programming_language_skills, framework_skills, database_management_skills, tools_skills, achievement_real, projects=extract_information(data_has_reader_pdf)
 
-print(f"curr work: {data_real_currwork}")
-print(f"programming language: {programming_language_skills}")
-print(f"framework: {framework_skills}")
-print(f"database management: {database_management_skills}")
-print(f"tools skills: {tools_skills}")
-print(f"achievement: {achievement_real}")
-print(f"projects: {projects}")
+# membuat variable data yang berhasil di extract 
+data_extract = {
+    "current_work": data_real_currwork, 
+    "programming_language": programming_language_skills, 
+    "framework_skills": framework_skills, 
+    "database_management_skills": database_management_skills, 
+    "tools_skills": tools_skills, 
+    "achievements": achievement_real, 
+    "projects": projects
+}
+
+print(data_extract)
+
+# menghitung akurasi dengan menggunakan precision, recall, f1
+# Fungsi untuk menghitung precision, recall, f1 untuk setiap kategori
+def calculate_scores(ground_truth, extracted_data):
+    categories = ground_truth.keys()
+    precision_scores = {}
+    recall_scores = {}
+    f1_scores = {}
+    
+    for category in categories:
+        true_values = set(ground_truth[category])
+        extracted_values = set(extracted_data[category])
+        
+        true_positives = len(true_values.intersection(extracted_values))
+        false_positives = len(extracted_values - true_values)
+        false_negatives = len(true_values - extracted_values)
+        
+        precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0
+        recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0
+        f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0
+
+        
+        precision_scores[category] = precision
+        # recall_scores[category] = recall
+        # f1_scores[category] = f1
+    
+    return precision_scores
+
+# menghitung skor akurasi 
+precision_scores = calculate_scores(ground_truth, extracted_data=data_extract)
+
+# Mencetak hasil
+print("Precision Scores per Category:")
+for category, score in precision_scores.items():
+    print(f"{category}: {score:.2f}")
 
 # melakukan predict future job work (section)
 
 # read csv skill project
 df_skillsproject = pd.read_csv('SkillProject.csv')
-df_skillsproject['ProgrammingSkills'] = df_skillsproject['ProgrammingSkills'].apply(lambda x: ''.join(x))
-df_skillsproject['Framework'] = df_skillsproject['Framework'].apply(lambda x: ''.join(x))
-df_skillsproject['DatabaseSkills'] = df_skillsproject['DatabaseSkills'].apply(lambda x: ''.join(x))
-df_skillsproject['ToolsSkills'] = df_skillsproject['ToolsSkills'].apply(lambda x: ''.join(x))
+# Menggabungkan list menjadi string untuk setiap kolom yang berisi list
+df_skillsproject['ProgrammingSkills'] = df_skillsproject['ProgrammingSkills'].apply(lambda x: ' '.join(eval(x)) if isinstance(x, str) else str(x))
+df_skillsproject['Framework'] = df_skillsproject['Framework'].apply(lambda x: ' '.join(eval(x)) if isinstance(x, str) else str(x))
+df_skillsproject['DatabaseSkills'] = df_skillsproject['DatabaseSkills'].apply(lambda x: ' '.join(eval(x)) if isinstance(x, str) else str(x))
+df_skillsproject['ToolsSkills'] = df_skillsproject['ToolsSkills'].apply(lambda x: ' '.join(eval(x)) if isinstance(x, str) else str(x))
 
+# mengambil data x (data yang digunakan untuk mendapatkan target)
 combine = df_skillsproject['TotalProject'].astype(str) +' '+ \
         df_skillsproject['ProgrammingSkills']+ ' '+ \
         df_skillsproject['Framework'] + ' ' + \
         df_skillsproject['DatabaseSkills'] + ' ' + \
-        df_skillsproject['ToolsSkills']
+        df_skillsproject['ToolsSkills'] + ' ' + \
+        df_skillsproject['Description']
 
 x = combine
-y = df_skillsproject.iloc[:, 0].values 
-
 print(x)
+# mengambil data y (target label)
+y = df_skillsproject['Job'].values
+
+print(df_skillsproject['Job'].value_counts())
 
 x_train, x_test, y_train, y_test = train_test_split(x,y, test_size=0.2, random_state=42)
 
@@ -312,19 +347,46 @@ pipeline = Pipeline([
     ('clf', RandomForestClassifier(random_state=42))
 ])
 
-# melakukan fit
-pipeline.fit(x_train, y_train)
+# melakukan fit & menghitung score akurasi 1 
+pipeline.fit(x_train, y_train).score(x_test, y_test)
 
 y_pred = pipeline.predict(x_test)
 
+# data user cv yang dimasukkan 
 new_data = "4 [Python JavaScript Go] [NextJs Springboot Gin Gorilla] [MySQL SQL Server Management Studio] [Docker Kubernetes Google Collab]"
-print(pipeline.predict([new_data]))
+# print(pipeline.predict([new_data]))
+
+# function predict job recommendation 
+def recommend_job_function(new_data):
+    # probabilitas untuk setiap pekerjaan yang direkomendasikan  
+    probs = pipeline.predict_proba([new_data])
+
+    # mendapatkan label pekerjaan 
+    job_labels = pipeline.classes_
+
+    # melakukan urutan probabilitas 
+    top_data = 3
+    sorted_indices = probs[0].argsort()[::-1][:top_data]
+    recommend_jobs = job_labels[sorted_indices]
+    recommend_props = probs[0][sorted_indices]
+
+    # menampilkan data serta prob 
+    list_recommend_jobs = []
+    for job, prob in zip(recommend_jobs, recommend_props):
+        # ambil description job 
+        description = df_skillsproject[df_skillsproject['Job'] == job]['Description'].values[0]
+        print(f"{job}: {prob*100:.2f}%")
+        list_recommend_jobs.append({'job': job, 'prob': prob, 'description': description})
+
+    return list_recommend_jobs
+
+print(recommend_job_function(new_data=new_data))
 
 # check accuracy score (proses testing dalam pengembangan)
-# sk = StratifiedKFold(n_splits=2)
-# score = cross_val_score(pipeline,x,y, cv=sk)
+sk = StratifiedKFold(n_splits=5)
+score = cross_val_score(pipeline,x,y, cv=sk, scoring='accuracy')
 
-# print(score)
+print(f"Result cross val score: {score}")
 
 # melakukan rekomendasi training yang bisa dia dapatkan degan similarity cosine 
 # dengan word2vec word moverse distance 
@@ -351,28 +413,40 @@ training_list_1 = ["learn excel fundamental",
 model = Word2Vec(training_list_1, min_count=1, vector_size=100, workers=4)
 
 # menyiapkan dictionary untuk membantu proses mendapatkan data 
-list_courses = {}
-
+course_reccomendations = {}
 # membuat vector fitur untuk setiap dokumen
 # format data input 
 # "4 [Python JavaScript] [NextJs Springboot] [MySQL] [Docker]"
 def prediction(data_input):
-    get_predicted_future_job = pipeline.predict([data_input]) 
-    for tl in range(len(training_list_1)):  
-        distance = model.wv.wmdistance(training_list_1[tl], get_predicted_future_job[0], norm=False)
-        list_courses[distance] = training_list_1[tl]
+    get_predicted_future_job = recommend_job_function(data_input)
 
-    # get top 5 of courses that available with they skills
-    top_5_courses = []
-    flag = 0 
-    for i in sorted(list_courses.keys()):
-        if flag <= 4:
-            top_5_courses.append(list_courses[i])
-        else: 
-            break
-        flag = flag + 1
+    # loop setiap get predicted future job 
+    for pred_job in get_predicted_future_job:
+        predicted_job_text = pred_job['job']
+        distance_course_pairs = []
+        # belum selese mau pulang
 
-    return pipeline.predict([data_input]), top_5_courses
+        for tl in range(len(training_list_1)): 
+            # mengukur jarak antara predicted job dengan course 
+            distance = model.wv.wmdistance(training_list_1[tl], predicted_job_text, norm=False)
 
+            # menambahkan data course ke dalam list 
+            distance_course_pairs.append((distance, training_list_1[tl]))
+
+        # melakukan sort berdasarkan data terkecil 
+        distance_course_pairs.sort(key=lambda x: x[0])
+
+        # ambil top 5 courses 
+        top_5_courses = [course for _,course in distance_course_pairs[:5]]
+
+        # simpan ke dalam course recommendation 
+        course_reccomendations[pred_job['job']] = top_5_courses
+
+    # print akhir untuk check 
+    print(course_reccomendations)
+
+    return get_predicted_future_job, course_reccomendations
+
+prediction("4 [Python JavaScript] [NextJs Springboot] [MySQL] [Docker]")
 
 
