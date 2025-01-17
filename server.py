@@ -1,4 +1,4 @@
-from flask import Flask, request, url_for, redirect, render_template, jsonify, Response
+from flask import Flask, request, url_for, redirect, render_template, jsonify, Response, send_file
 import os
 from script import read_pdf_cv, extract_information, prediction
 from flask_cors import CORS
@@ -11,9 +11,6 @@ repo_id = "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF"
 app = Flask(__name__)
 CORS(app)
 app.config['UPLOAD_FOLDER'] = '/Users/yosolukito/Documents/web_aic_lomba_compfest_2024/upload'
-
-
-
 
 client = InferenceClient(api_key="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")
 
@@ -143,8 +140,12 @@ def upload_file():
             "predicted_job": predicted_job, 
             "top_5_courses": top_5_courses, 
             }), 200
-    
 
+
+@app.route("/get-template", methods=['GET'])
+def get_template():
+    cv_template_path = "static/Template_CV.docx"
+    return send_file(cv_template_path, as_attachment=True)  
 
 
     

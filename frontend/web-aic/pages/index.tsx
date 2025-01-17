@@ -16,6 +16,10 @@ export default function Home() {
     setSelectedFile(file)
   }
 
+  const downloadTemplateFile = ():void => {
+    window.location.href = `http://127.0.0.1:5000/get-template`
+  }
+
   // upload file cv API 
   const uploadFile = async (event: FormEvent) => {
     event.preventDefault()
@@ -86,6 +90,12 @@ export default function Home() {
                 className="bg-cyan-700 text-white py-2 px-6 mt-2 rounded-lg shadow hover:bg-cyan-300 transition-all"
               >
                 Upload
+              </button>
+              <button
+                onClick={downloadTemplateFile}
+                className="bg-teal-900 text-white py-2 mt-2 rounded-lg shadow hover:bg-cyan-300 transition-all"
+              >
+                Download Template
               </button>
           </div>
         </div>

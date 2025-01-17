@@ -1,6 +1,5 @@
 import { useRouter } from 'next/router'
 import React, { useEffect, useRef, useState } from 'react'
-import {gsap} from 'gsap'
 
 function index() {
     const router = useRouter()
@@ -11,13 +10,13 @@ function index() {
 
     useEffect(()=>{
 
-        if(typeof window !== 'undefined' && datas['predicted_job']){
-            circleRefs.current.forEach((circle, idx)=>{
-                if(circle){
-                    gsap.to(circle, {duration:5, x:100, rotation:360, ease: 'power3.out'})
-                }
-            })
-        }
+        // if(typeof window !== 'undefined' && datas['predicted_job']){
+        //     circleRefs.current.forEach((circle, idx)=>{
+        //         if(circle){
+        //             gsap.to(circle, {duration:3, x:100, rotation:360, ease: 'power3.out'})
+        //         }
+        //     })
+        // }
         
         // mengambil data dari local storage 
         let dataObj = localStorage.getItem("objData")
@@ -150,11 +149,8 @@ function index() {
                                         setPredClick(datas['predicted_job'][idx])
                                         }} className='mx-2 font-bold bg-white w-1/3 h-[200px] rounded' key={idx}>
                                         <p className='rounded-md px-2 text-center my-2'>{pj['job']}</p>
-                                        <div className='flex items-center h-3/4'>
-                                            <div 
-                                            ref={(el) => {
-                                                circleRefs.current[idx] = el
-                                            }} 
+                                        <div className='flex justify-center items-center h-3/4'>
+                                            <div
                                             className='w-[120px] h-[120px] bg-gradient-to-r from-green-300 to-green-600 rounded-full flex justify-center items-center'>
                                                 <p>{Math.round(pj['prob']*100)+'%'}</p>
                                             </div>
@@ -165,11 +161,11 @@ function index() {
                         </div>
                     </div>
                     {/* description */}
-                    <div className='flex flex-wrap ml-[10px] mt-[20px] text-xl'>
-                        <div>
+                    <div className='flex flex-col md:flex-row items-start md:items-center space-y-2 md:space-y-0 md:space-x-4 mt-5 text-lg bg-gray-100 rounded'>
+                        <div className='text-gray-700 border'>
                             <p>Description:</p>
                         </div>
-                        <div className='font-bold'>
+                        <div className='font-semibold text-gray-900'>
                             <p>{predClick['description']}</p>
                         </div>
                     </div>
@@ -183,7 +179,7 @@ function index() {
                             {
                                
                                 topCourses?.map((tc:any, idx:number)=>( 
-                                    <div className='hover:[border-black border-2 border-solid] min-h-[100px] rounded mt-2 shadow-md mx-3' key={idx}>
+                                    <div className='hover:[border-black border-2 border-solid] min-h-[100px] bg-gray-100 rounded mt-2 shadow-md mx-3' key={idx}>
                                         <div 
                                         className='m-5 font-bold'>
                                             <p className=''>{tc}</p>
